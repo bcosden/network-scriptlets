@@ -2,13 +2,33 @@
 loc="eastus"
 rg="vwan-lab"
 
+
 # RESOURCE GROUP
 #
+# list all resources in a resource group
+az resource list --query "[?resourceGroup=='$rg'].{ name: name, kind: kind, type: type, region: location }" -o table
+
 # create a resource group
 az group create -n $rg -l $loc
 
 # delete a resource group and all resources
 az group delete -n $rg -l $loc
+
+# VIRTUAL MACHINES
+#
+# create an Ubuntu VM
+vmname="testvm1"
+username="azureuser"
+password="MyP@ssword123"
+az vm create -n $vmname -g $rg --image ubuntults --public-ip-sku Standard --size Standard_D2S_v3 --subnet default --vnet-name exrHub --admin-username $username --admin-password $password
+
+# update SSH rule to source from current IP only
+mypip=$(curl -4 ifconfig.io -s)
+az network nsg rule update -g $rg --nsg-name $vmname'NSG' -n 'default-allow-ssh' --source-address-prefixes $mypip
+
+# list vm images available in the gallery
+az vm image list --all -f UbuntuServer -p Canonical -l eastus -o table
+az vm list-sizes --location westeurope -o table
 
 
 # STORAGE ACCOUNT
@@ -49,10 +69,6 @@ az network nsg create -g $rg -n MyNsg
 # create NSG rule for port 22 with current source IP
 mypip=$(curl -4 ifconfig.io -s)
 az network nsg rule create -n SSH --nsg-name MyNsg --priority 300 -g $rg --direction Inbound --protocol TCP --source-address-prefixes $mypip --destination-port-ranges 22
-
-# update SSH rule to source from current IP only
-mypip=$(curl -4 ifconfig.io -s)
-az network nsg rule update -g $rg --nsg-name myNSG -n SSH --source-address-prefixes $mypip
 
 
 # VIRTUAL NETWORK GATEWAY (VPN)
