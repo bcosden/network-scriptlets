@@ -1,0 +1,100 @@
+# VARIABLES
+loc="eastus"
+rg="vwan-lab"
+
+# RESOURCE GROUP
+#
+# create a resource group
+az group create -n $rg -l $loc
+
+# delete a resource group and all resources
+az group delete -n $rg -l $loc
+
+
+# STORAGE ACCOUNT
+#
+# create a storage account
+az storage account create -n vwanconfig -g $rg -l $loc --sku Standard_LRS
+key=$(az storage account keys list -g $rg --account-name vwanconfig --query '[0].value' -o tsv)
+az storage container create -n config -g $rg --account-name vwanconfig --account-key $key
+sas=$(az storage container generate-sas --account-key $key --account-name vwanconfig --expiry 2023-01-01 --name config --permissions aclrw -o tsv)
+
+
+# EXPRESSROUTE
+#
+# create an expressroute circuit
+az network express-route create -g exrvpn -n exr-circuit --bandwidth 50Mbps --peering-location "Washington DC" --provider "Megaport" -l $loc --sku-family MeteredData --sku-tier Standard
+
+# get list of locations by name and address in a table
+az network express-route port location list --query "[].{location:name, address:address}" -o table
+
+# get list of locations that contain a particular name
+az network express-route port location list --query "[? contains(address, 'Ashburn')].{location:name, address:address}" -o table
+
+# get the details for a particular location, the bandwidths available in that location
+az network express-route port location show --location "Equinix-Ashburn-DC2" --query "availableBandwidths" -o table
+
+
+# VIRTUAL NETWORK
+#
+# create a virtual network
+az network vnet create --address-prefixes 10.100.0.0/16 -n spokeVnet -g $rg --subnet-name main --subnet-prefixes 10.100.0.0/24
+
+# create a subnet with NSG assigned
+az network vnet subnet create -g $rg --vnet-name spokeVnet -n MySubnet --address-prefixes 10.0.0.0/24 --network-security-group MyNsg
+
+# create NSG
+az network nsg create -g $rg -n MyNsg 
+
+# create NSG rule for port 22 with current source IP
+mypip=$(curl -4 ifconfig.io -s)
+az network nsg rule create -n SSH --nsg-name MyNsg --priority 300 -g $rg --direction Inbound --protocol TCP --source-address-prefixes $mypip --destination-port-ranges 22
+
+# update SSH rule to source from current IP only
+mypip=$(curl -4 ifconfig.io -s)
+az network nsg rule update -g $rg --nsg-name myNSG -n SSH --source-address-prefixes $mypip
+
+
+# VIRTUAL NETWORK GATEWAY (VPN)
+#
+# create standard public ips
+az network public-ip create -n remote1GW1-pip -g $rg --location $loc --sku Standard
+az network public-ip create -n remote1GW2-pip -g $rg --location $loc --sku Standard
+
+# create vpn gateway active / active with BGP enabled
+az network vnet-gateway create -n remote1GW --public-ip-addresses remote1GW1-pip remote1GW2-pip -g $rg --vnet remote1Vnet --asn 65510 --gateway-type Vpn -l $loc --sku VpnGw2 --vpn-gateway-generation Generation2 --no-wait
+
+# get public ip address and bgp peer ip's
+bgpip1=$(az network vnet-gateway list-bgp-peer-status -g $rg -n remote1GW --query 'value[1].{ip:neighbor}' -o tsv)
+bgpip2=$(az network vnet-gateway list-bgp-peer-status -g $rg -n remote1GW --query 'value[2].{ip:neighbor}' -o tsv)
+pip1=$(az network public-ip show -n remote1GW1-pip  -g $rg -o tsv --query "ipAddress" -o tsv)
+pip2=$(az network public-ip show -n remote1GW2-pip  -g $rg -o tsv --query "ipAddress" -o tsv)
+
+# create connection from vpn gw to local gateway and watch for connection succeeded
+az network local-gateway create -g $rg -n site-east-LG --gateway-ip-address $vwanpip1 --asn 65515 --bgp-peering-address $vwanbgp1 -l $loc
+az network vpn-connection create -n remote1gwTOvwansite1 -g $rg --vnet-gateway1 remote1GW --local-gateway2 site-east-LG --enable-bgp --shared-key 'abc123'
+watch -n 5 az network vpn-connection show -g $rg -n remote1gwTOvwansite1 --query connectionStatus -o tsv
+
+# VIRTUAL WAN
+#
+
+# create vpn gateway
+az network vpn-gateway create -n easthubvpngw -g $rg --location $loc --vhub eastHub --no-wait
+az network vpn-gateway create -n easthub2vpngw -g $rg --location $loc2 --vhub east2Hub --no-wait
+
+# create vpn site
+az network vpn-site create --ip-address $pip1 -n site-east-1 -g $rg --asn 65510 --bgp-peering-address $bgpip1 -l $loc --virtual-wan Vwan-Object --device-model 'Azure' --device-vendor 'Microsoft' --link-speed '50' --with-link true
+az network vpn-site link add --ip-address $pip2 -n site-east-2 -g $rg --site-name 'site-east-1' --asn 65510 --bgp-peering-address $bgpip2 --link-provider-name 'Microsoft' --link-speed-in-mbps '50'
+
+# get vpn gateway name and site name
+vpn1=$(az network vpn-gateway list -g $rg --query '[0].{name:name}' -o tsv)
+site=$(az network vpn-site show -n site-east-1 -g $rg --query id -o tsv)
+
+# create vpn site connection
+az network vpn-gateway connection create --gateway-name $vpn1 -n site-east-1-conn -g $rg --enable-bgp true --remote-vpn-site $site --internet-security --shared-key 'abc123'
+
+# get vwan vpn gw public ip's and bgp peers
+vwanbgp1=$(az network vpn-gateway show -n $vpn1 -g $rg --query 'bgpSettings.bgpPeeringAddresses[0].defaultBgpIpAddresses' -o tsv)
+vwanpip1=$(az network vpn-gateway show -n $vpn1 -g $rg --query 'bgpSettings.bgpPeeringAddresses[0].tunnelIpAddresses[0]' -o tsv)
+vwanbgp2=$(az network vpn-gateway show -n $vpn1 -g $rg --query 'bgpSettings.bgpPeeringAddresses[1].defaultBgpIpAddresses' -o tsv)
+vwanpip2=$(az network vpn-gateway show -n $vpn1 -g $rg --query 'bgpSettings.bgpPeeringAddresses[1].tunnelIpAddresses[0]' -o tsv)
