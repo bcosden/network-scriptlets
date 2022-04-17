@@ -6,7 +6,7 @@ rg="vwan-lab"
 # RESOURCE GROUP
 #
 # list all resources in a resource group
-az resource list --query "[?resourceGroup=='$rg'].{ name: name, kind: kind, type: type, region: location }" -o table
+az resource list --query "[?resourceGroup=='$rg'].{ name: name, flavor: kind, Resourcetype: type, region: location }" -o table
 
 # create a resource group
 az group create -n $rg -l $loc
@@ -81,10 +81,8 @@ az network public-ip create -n remote1GW2-pip -g $rg --location $loc --sku Stand
 az network vnet-gateway create -n remote1GW --public-ip-addresses remote1GW1-pip remote1GW2-pip -g $rg --vnet remote1Vnet --asn 65510 --gateway-type Vpn -l $loc --sku VpnGw2 --vpn-gateway-generation Generation2 --no-wait
 
 # get public ip address and bgp peer ip's
-bgpip1=$(az network vnet-gateway list-bgp-peer-status -g $rg -n remote1GW --query 'value[1].{ip:neighbor}' -o tsv)
-bgpip2=$(az network vnet-gateway list-bgp-peer-status -g $rg -n remote1GW --query 'value[2].{ip:neighbor}' -o tsv)
-pip1=$(az network public-ip show -n remote1GW1-pip  -g $rg -o tsv --query "ipAddress" -o tsv)
-pip2=$(az network public-ip show -n remote1GW2-pip  -g $rg -o tsv --query "ipAddress" -o tsv)
+bgp1=$(az network vnet-gateway show -n remote1GW -g $rg --query 'bgpSettings.bgpPeeringAddresses[0].defaultBgpIpAddresses' -o tsv)
+pip1=$(az network vnet-gateway show -n remote1GW -g $rg --query 'bgpSettings.bgpPeeringAddresses[0].tunnelIpAddresses[0]' -o tsv)
 
 # create connection from vpn gw to local gateway and watch for connection succeeded
 az network local-gateway create -g $rg -n site-east-LG --gateway-ip-address $vwanpip1 --asn 65515 --bgp-peering-address $vwanbgp1 -l $loc
@@ -93,10 +91,17 @@ watch -n 5 az network vpn-connection show -g $rg -n remote1gwTOvwansite1 --query
 
 # VIRTUAL WAN
 #
+# create virtual wan
+az network vwan create -g $rg -n vwanvpn --branch-to-branch-traffic true --location $loc --type Standard
+
+# create virtual hub
+az network vhub create -g $rg --name hubeast --address-prefix 10.0.0.0/24 --vwan vwanvpn --location $loc --sku Standard
+
+# create vnet connection to vhub
+az network vhub connection create -n spoke1conn --remote-vnet spoke1Vnet -g $rg --vhub-name hubeast
 
 # create vpn gateway
 az network vpn-gateway create -n easthubvpngw -g $rg --location $loc --vhub eastHub --no-wait
-az network vpn-gateway create -n easthub2vpngw -g $rg --location $loc2 --vhub east2Hub --no-wait
 
 # create vpn site
 az network vpn-site create --ip-address $pip1 -n site-east-1 -g $rg --asn 65510 --bgp-peering-address $bgpip1 -l $loc --virtual-wan Vwan-Object --device-model 'Azure' --device-vendor 'Microsoft' --link-speed '50' --with-link true
@@ -112,5 +117,3 @@ az network vpn-gateway connection create --gateway-name $vpn1 -n site-east-1-con
 # get vwan vpn gw public ip's and bgp peers
 vwanbgp1=$(az network vpn-gateway show -n $vpn1 -g $rg --query 'bgpSettings.bgpPeeringAddresses[0].defaultBgpIpAddresses' -o tsv)
 vwanpip1=$(az network vpn-gateway show -n $vpn1 -g $rg --query 'bgpSettings.bgpPeeringAddresses[0].tunnelIpAddresses[0]' -o tsv)
-vwanbgp2=$(az network vpn-gateway show -n $vpn1 -g $rg --query 'bgpSettings.bgpPeeringAddresses[1].defaultBgpIpAddresses' -o tsv)
-vwanpip2=$(az network vpn-gateway show -n $vpn1 -g $rg --query 'bgpSettings.bgpPeeringAddresses[1].tunnelIpAddresses[0]' -o tsv)
