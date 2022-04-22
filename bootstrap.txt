@@ -1,0 +1,10 @@
+Section: IOS configuration
+ip route 10.2.0.0 255.255.0.0 10.1.1.1
+access-list 1 permit 10.0.0.0 0.255.255.255
+!
+ip nat inside source list 1 interface GigabitEthernet1 overload
+
+int GigabitEthernet2
+ip nat inside
+int GigabitEthernet1
+ip nat outside

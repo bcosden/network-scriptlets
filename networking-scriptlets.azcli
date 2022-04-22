@@ -30,6 +30,17 @@ az network nsg rule update -g $rg --nsg-name $vmname'NSG' -n 'default-allow-ssh'
 az vm image list --all -f UbuntuServer -p Canonical -l eastus -o table
 az vm list-sizes --location westeurope -o table
 
+# create a Cisco CSR
+#
+username="azureuser"
+password="MyP@ssword123"
+az vm image terms accept --urn cisco:cisco-csr-1000v:17_3_4a-byol:latest
+az network public-ip create --name CSRPublicIP --resource-group $rg --idle-timeout 30 --allocation-method Static
+az network nic create --name CSROutsideInterface --resource-group $rg --subnet zeronet --vnet Spoke1 --public-ip-address CSRPublicIP --ip-forwarding true
+az network nic create --name CSRInsideInterface --resource-group $rg --subnet onenet --vnet Spoke1 --ip-forwarding true
+# make sure you downloaded bootstrap.txt to the local directory first
+az vm create --resource-group $rg --location $loc --name CSR --size Standard_D2_v2 --nics CSROutsideInterface CSRInsideInterface  --image cisco:cisco-csr-1000v:17_3_4a-byol:latest --admin-username $username --admin-password $password --custom-data bootstrap.txt --no-wait
+
 
 # STORAGE ACCOUNT
 #
@@ -81,13 +92,23 @@ az network public-ip create -n remote1GW2-pip -g $rg --location $loc --sku Stand
 az network vnet-gateway create -n remote1GW --public-ip-addresses remote1GW1-pip remote1GW2-pip -g $rg --vnet remote1Vnet --asn 65510 --gateway-type Vpn -l $loc --sku VpnGw2 --vpn-gateway-generation Generation2 --no-wait
 
 # get public ip address and bgp peer ip's
-bgp1=$(az network vnet-gateway show -n remote1GW -g $rg --query 'bgpSettings.bgpPeeringAddresses[0].defaultBgpIpAddresses' -o tsv)
+bgp1=$(az network vnet-gateway show -n remote1GW -g $rg --query 'bgpSettings.bgpPeeringAddresses[0].defaultBgpIpAddresses[0]' -o tsv)
 pip1=$(az network vnet-gateway show -n remote1GW -g $rg --query 'bgpSettings.bgpPeeringAddresses[0].tunnelIpAddresses[0]' -o tsv)
 
 # create connection from vpn gw to local gateway and watch for connection succeeded
 az network local-gateway create -g $rg -n site-east-LG --gateway-ip-address $vwanpip1 --asn 65515 --bgp-peering-address $vwanbgp1 -l $loc
 az network vpn-connection create -n remote1gwTOvwansite1 -g $rg --vnet-gateway1 remote1GW --local-gateway2 site-east-LG --enable-bgp --shared-key 'abc123'
 watch -n 5 az network vpn-connection show -g $rg -n remote1gwTOvwansite1 --query connectionStatus -o tsv
+
+# get VPN Gateway provisioning status
+prState=''
+# bash format: while [ $prState -ne 'Succeeded' ]
+while [[ $prState != 'Succeeded' ]]; #zsh
+do
+    prState=$(az network vnet-gateway show -g vwan-vpn -n branchWestGW --query provisioningState -o tsv)
+    echo "branchWestGW provisioningState="$prState
+    sleep 5
+done
 
 # VIRTUAL WAN
 #
@@ -96,6 +117,10 @@ az network vwan create -g $rg -n vwanvpn --branch-to-branch-traffic true --locat
 
 # create virtual hub
 az network vhub create -g $rg --name hubeast --address-prefix 10.0.0.0/24 --vwan vwanvpn --location $loc --sku Standard
+
+# check hub provisioning and routing state
+az network vhub show -g vwan-vpn -n hubeast --query 'provisioningState' -o tsv
+az network vhub show -g vwan-vpn -n hubeast --query 'routingState' -o tsv
 
 # create vnet connection to vhub
 az network vhub connection create -n spoke1conn --remote-vnet spoke1Vnet -g $rg --vhub-name hubeast
@@ -115,5 +140,25 @@ site=$(az network vpn-site show -n site-east-1 -g $rg --query id -o tsv)
 az network vpn-gateway connection create --gateway-name $vpn1 -n site-east-1-conn -g $rg --enable-bgp true --remote-vpn-site $site --internet-security --shared-key 'abc123'
 
 # get vwan vpn gw public ip's and bgp peers
-vwanbgp1=$(az network vpn-gateway show -n $vpn1 -g $rg --query 'bgpSettings.bgpPeeringAddresses[0].defaultBgpIpAddresses' -o tsv)
+vwanbgp1=$(az network vpn-gateway show -n $vpn1 -g $rg --query 'bgpSettings.bgpPeeringAddresses[0].defaultBgpIpAddresses[0]' -o tsv)
 vwanpip1=$(az network vpn-gateway show -n $vpn1 -g $rg --query 'bgpSettings.bgpPeeringAddresses[0].tunnelIpAddresses[0]' -o tsv)
+
+# get VWAN VPN gateway provisioning state
+prState=''
+# bash format: while [ $prState -ne 'Succeeded' ]
+while [[ $prState != 'Succeeded' ]]; #zsh
+do
+    prState=$(az network vhub show -g vwan-vpn -n hubwest --query 'provisioningState' -o tsv)
+    echo "hubwest provisioningState="$prState
+    sleep 5
+done
+
+# get VWAN VPN routing state
+rtState=''
+# bash format: while [ $prState -ne 'Succeeded' ]
+while [[ $rtState != 'Provisioned' ]]; #zsh
+do
+    rtState=$(az network vhub show -g vwan-vpn -n hubwest --query 'routingState' -o tsv)
+    echo "hubwest routingState="$rtState
+    sleep 5
+done
