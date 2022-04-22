@@ -22,6 +22,12 @@ username="azureuser"
 password="MyP@ssword123"
 az vm create -n $vmname -g $rg --image ubuntults --public-ip-sku Standard --size Standard_D2S_v3 --subnet default --vnet-name exrHub --admin-username $username --admin-password $password
 
+# show VM status details and ips
+az vm show -g $rg -n CSR --show-details -o table
+
+# get VM sizes
+az vm list-sizes -l $loc -o table
+
 # update SSH rule to source from current IP only
 mypip=$(curl -4 ifconfig.io -s)
 az network nsg rule update -g $rg --nsg-name $vmname'NSG' -n 'default-allow-ssh' --source-address-prefixes $mypip
@@ -35,12 +41,20 @@ az vm list-sizes --location westeurope -o table
 username="azureuser"
 password="MyP@ssword123"
 az vm image terms accept --urn cisco:cisco-csr-1000v:17_3_4a-byol:latest
+az network vnet create --resource-group $rg --name nvaVnet --location $loc --address-prefixes 10.1.0.0/16 --subnet-name nva --subnet-prefix 10.1.10.0/24
+az network vnet subnet create --address-prefix 10.1.0.0/24 --name untrust --resource-group $rg --vnet-name nvaVnet
+az network vnet subnet create --address-prefix 10.1.1.0/24 --name trust --resource-group $rg --vnet-name nvaVnet
 az network public-ip create --name CSRPublicIP --resource-group $rg --idle-timeout 30 --allocation-method Static
-az network nic create --name CSROutsideInterface --resource-group $rg --subnet zeronet --vnet Spoke1 --public-ip-address CSRPublicIP --ip-forwarding true
-az network nic create --name CSRInsideInterface --resource-group $rg --subnet onenet --vnet Spoke1 --ip-forwarding true
+az network nic create --name CSROutsideInterface --resource-group $rg --subnet untrust --vnet nvaVnet --public-ip-address CSRPublicIP --ip-forwarding true
+az network nic create --name CSRInsideInterface --resource-group $rg --subnet trust --vnet nvaVnet --ip-forwarding true
 # make sure you downloaded bootstrap.txt to the local directory first
-az vm create --resource-group $rg --location $loc --name CSR --size Standard_D2_v2 --nics CSROutsideInterface CSRInsideInterface  --image cisco:cisco-csr-1000v:17_3_4a-byol:latest --admin-username $username --admin-password $password --custom-data bootstrap.txt --no-wait
+az vm create --resource-group $rg --location $loc --name CSR --size Standard_D2_v2 --nics CSROutsideInterface CSRInsideInterface  --image cisco:cisco-csr-1000v:17_3_4a-byol:latest --admin-username $username --admin-password $password --custom-data bootstrap.txt
 
+# BASTION
+#
+# create bastion remote access
+az network public-ip create --name bastion-pip --resource-group $rg -l $loc --sku Standard
+az network bastion create -g $rg -n bastion --public-ip-address bastion-pip --vnet-name nvaVnet -l $loc
 
 # STORAGE ACCOUNT
 #
@@ -96,8 +110,8 @@ bgp1=$(az network vnet-gateway show -n remote1GW -g $rg --query 'bgpSettings.bgp
 pip1=$(az network vnet-gateway show -n remote1GW -g $rg --query 'bgpSettings.bgpPeeringAddresses[0].tunnelIpAddresses[0]' -o tsv)
 
 # create connection from vpn gw to local gateway and watch for connection succeeded
-az network local-gateway create -g $rg -n site-east-LG --gateway-ip-address $vwanpip1 --asn 65515 --bgp-peering-address $vwanbgp1 -l $loc
-az network vpn-connection create -n remote1gwTOvwansite1 -g $rg --vnet-gateway1 remote1GW --local-gateway2 site-east-LG --enable-bgp --shared-key 'abc123'
+az network local-gateway create -g $rg -l $loc -n site-east-LG --gateway-ip-address $vwanpip1 --asn 65515 --bgp-peering-address $vwanbgp1
+az network vpn-connection create -n remote1gwTOvwansite1 -g $rg -l $loc --vnet-gateway1 remote1GW --local-gateway2 site-east-LG --enable-bgp --shared-key 'abc123'
 watch -n 5 az network vpn-connection show -g $rg -n remote1gwTOvwansite1 --query connectionStatus -o tsv
 
 # get VPN Gateway provisioning status
