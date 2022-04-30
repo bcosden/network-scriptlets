@@ -163,6 +163,34 @@ az network firewall policy rule-collection-group collection rule add \
 # associate policy with existing secured hub firewall
 az network firewall update -g $rg -n AzureFirewall_easthub --firewall-policy fw-default-policy --vhub easthub
 
+# create a secure hub firewall
+az network firewall create -n easthub-fw -g $rg -l $loc --sku AZFW_Hub --virtual-hub eastHub --public-ip-count 1 --tier Standard
+
+# turn on diagnostic settings for Azure Firewall -- log all metrics
+az monitor diagnostic-settings create -n AzFWLogAll  \
+--resource 'resourceID'  \
+--workspace 'logAnalyticWorkspaceID' \
+--logs '[
+    {  
+        "category": "AzureFirewallApplicationRule", 
+        "enabled": true 
+    }, 
+    { 
+        "category": "AzureFirewallNetworkRule",
+        "enabled": true 
+    }, 
+    { 
+        "category": "AzureFirewallDnsProxy", 
+        "enabled": true 
+    } 
+]' \
+--metrics '[ 
+    { 
+        "category": "AllMetrics", 
+        "enabled": true 
+    } 
+ ]'
+
 # show info about firewall policy and rule collection group
 az network firewall policy show -g vwanvpn -n EastDefaultPolicy
 
