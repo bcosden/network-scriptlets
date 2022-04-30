@@ -124,6 +124,50 @@ do
     sleep 5
 done
 
+# FIREWALL
+#
+# create a firewall policy
+az network firewall policy create -g $rg -n fw-default-policy -l $loc --sku Standard
+
+# create a firewall policy rule collection group
+az network firewall policy rule-collection-group create -g $rg -n DefaultNetworkRuleCollectionGroup --priority 300 --policy-name fw-default-policy
+
+# create first network rule
+az network firewall policy rule-collection-group collection add-filter-collection \
+ --resource-group $rg \
+ --policy-name fw-default-policy \
+ --name NetworkRules \
+ --rcg-name DefaultNetworkRuleCollectionGroup \
+ --rule-type NetworkRule \
+ --rule-name AnyRFC1918only \
+ --action Allow \
+ --ip-protocols "Any" \
+ --source-addresses 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 \
+ --destination-addresses  10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 \
+ --destination-ports "*" \
+ --collection-priority 100
+
+# add a network rule
+az network firewall policy rule-collection-group collection rule add \
+ --resource-group $rg \
+ --collection-name NetworkRules \
+ --name 10NetInternet-WebOnly \
+ --policy-name fw-default-policy \
+ --rcg-name DefaultNetworkRuleCollectionGroup \
+ --rule-type NetworkRule \
+ --ip-protocols "TCP" \
+ --source-addresses 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 \
+ --destination-addresses "*" \
+ --destination-ports 80 443
+
+# associate policy with existing secured hub firewall
+az network firewall update -g $rg -n AzureFirewall_easthub --firewall-policy fw-default-policy --vhub easthub
+
+# show info about firewall policy and rule collection group
+az network firewall policy show -g vwanvpn -n EastDefaultPolicy
+
+az network firewall policy rule-collection-group show -g $rg -n DefaultNetworkRuleCollectionGroup --policy-name EastDefaultPolicy
+
 # VIRTUAL WAN
 #
 # create virtual wan
