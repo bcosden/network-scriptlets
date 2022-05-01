@@ -8,6 +8,8 @@ rg="vwan-lab"
 # list all resources in a resource group
 az resource list --query "[?resourceGroup=='$rg'].{ name: name, flavor: kind, Resourcetype: type, region: location }" -o table
 
+az resource list --query "[?resourceGroup=='$rg'].{ name: name, flavor: kind, Resourcetype: type, region: location } | sort_by([], &Resourcetype)" -o table
+
 # create a resource group
 az group create -n $rg -l $loc
 
@@ -24,6 +26,12 @@ az vm create -n $vmname -g $rg --image ubuntults --public-ip-sku Standard --size
 
 # show VM status details and ips
 az vm show -g $rg -n CSR --show-details -o table
+
+az vm list -g $rg --show-details -o table --query "[*].{VM:name, Size:hardwareProfile.vmSize, OS:storageProfile.osDisk.osType, IP:privateIps, PIP:publicIps, Loc:location, State:powerState, admin:osProfile.adminUsername, FQDN:fqdns}"
+
+az vm list -o table --query "[?location == 'eastus2']"
+
+az vm list -o table --query "[?tags.env == 'test' || tags.env == 'dev']"
 
 # get VM sizes
 az vm list-sizes -l $loc -o table
@@ -94,6 +102,12 @@ az network nsg create -g $rg -n MyNsg
 # create NSG rule for port 22 with current source IP
 mypip=$(curl -4 ifconfig.io -s)
 az network nsg rule create -n SSH --nsg-name MyNsg --priority 300 -g $rg --direction Inbound --protocol TCP --source-address-prefixes $mypip --destination-port-ranges 22
+
+# Peer Virtual Networks
+VNet1Id=$(az network vnet show -g $rg -n $vNet1 --query id -o tsv)
+VNet2Id=$(az network vnet show -g $rg -n $vNet2 --query id -o tsv)
+az network vnet peering create -n "Link"$vNet1"To"$vNet2 -g $rg --vnet-name $vNet1 --remote-vnet $VNet2Id --allow-vnet-access
+az network vnet peering create -n "Link"$vNet2"To"$vNet1 -g $rg --vnet-name $vNet2 --remote-vnet $VNet1Id --allow-vnet-access
 
 
 # VIRTUAL NETWORK GATEWAY (VPN)
