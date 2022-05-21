@@ -24,6 +24,15 @@ username="azureuser"
 password="MyP@ssword123"
 az vm create -n $vmname -g $rg --image ubuntults --public-ip-sku Standard --size Standard_D2S_v3 --subnet default --vnet-name exrHub --admin-username $username --admin-password $password
 
+# create vm with image URN using latest
+az vm create -n $vmname -g $rg --image 'Canonical:0001-com-ubuntu-server-focal:20_04-lts-gen2:latest' --public-ip-sku Standard --size Standard_D2S_v3 --admin-username $username --admin-password $password
+
+# find specific image version
+az vm image list -l eastus -p Canonical --all --query "[?version == '20.04.202205100']"
+
+# find image where SKU contains
+az vm image list -l eastus -p Canonical --all --query "[?contains(sku, '20_04-lts-gen2')]" -o table
+
 # show VM status details and ips
 az vm show -g $rg -n CSR --show-details -o table
 
@@ -76,7 +85,7 @@ sas=$(az storage container generate-sas --account-key $key --account-name vwanco
 # EXPRESSROUTE
 #
 # create an expressroute circuit
-az network express-route create -g exrvpn -n exr-circuit --bandwidth 50Mbps --peering-location "Washington DC" --provider "Megaport" -l $loc --sku-family MeteredData --sku-tier Standard
+az network express-route create -g exrvpn -n exr-circuit --bandwidth '50 Mbps' --peering-location "Washington DC" --provider "Megaport" -l $loc --sku-family MeteredData --sku-tier Standard
 
 # get list of locations by name and address in a table
 az network express-route port location list --query "[].{location:name, address:address}" -o table
