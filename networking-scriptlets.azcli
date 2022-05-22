@@ -22,7 +22,12 @@ az group delete -n $rg -l $loc
 vmname="testvm1"
 username="azureuser"
 password="MyP@ssword123"
+
+# create vm with user/pass
 az vm create -n $vmname -g $rg --image ubuntults --public-ip-sku Standard --size Standard_D2S_v3 --subnet default --vnet-name exrHub --admin-username $username --admin-password $password
+
+# create VM with public SSH key
+az vm create -n $vmname -g $rg --image ubuntults --public-ip-sku Standard --size Standard_D2S_v3 --subnet default --vnet-name exrHub --authentication-type ssh --admin-username $username --ssh-key-values @~/.ssh/id_rsa.pub
 
 # create vm with image URN using latest
 az vm create -n $vmname -g $rg --image 'Canonical:0001-com-ubuntu-server-focal:20_04-lts-gen2:latest' --public-ip-sku Standard --size Standard_D2S_v3 --admin-username $username --admin-password $password
@@ -70,8 +75,26 @@ az vm create --resource-group $rg --location $loc --name CSR --size Standard_D2_
 # BASTION
 #
 # create bastion remote access
+az network vnet subnet create -g $rg --vnet-name hubVnet -n AzureBastionSubnet --address-prefixes 10.1.6.0/26
 az network public-ip create --name bastion-pip --resource-group $rg -l $loc --sku Standard
 az network bastion create -g $rg -n bastion --public-ip-address bastion-pip --vnet-name nvaVnet -l $loc
+
+# Turn on SSH tunneling
+# az cli does not have a property to enable SSH tunneling, so must be done via rest API
+az rest --method PUT \
+    --uri 'https://management.azure.com/subscriptions/SUBID/resourceGroups/routeserver/providers/Microsoft.Network/bastionHosts/bastion?api-version=2021-08-01' \
+    --body '{"location":"eastus", "properties":{"enableTunneling":"true", "ipConfigurations": [
+    {"name": "bastion_ip_config", "properties":{"subnet":{"id":"/subscriptions/SUBID/resourceGroups/routeserver/providers/Microsoft.Network/virtualNetworks/hubVnet/subnets/AzureBastionSubnet"},"publicIPAddress":{"id":"/subscriptions/SUBID/resourceGroups/routeserver/providers/Microsoft.Network/publicIPAddresses/bastion-pip"}}}]}}'
+
+# check Bastion provisioning state
+watch -n 5 'az network bastion show -g routeserver -n bastion --query 'provisioningState''
+
+# get VM ID
+az vm show -g routeserver -n QuaggaVM --query 'id' -o tsv
+
+# SSH tunnel to Azure VM
+az network bastion ssh -n bastion -g routeserver --target-resource-id '/subscriptions/SUBID/resourceGroups/routeserver/providers/Microsoft.Compute/virtualMachines/QuaggaVM' --auth-type password --username azureuser
+az network bastion ssh -n bastion -g routeserver --target-resource-id '/subscriptions/SUBID/resourceGroups/routeserver/providers/Microsoft.Compute/virtualMachines/testvm' --auth-type ssh-key --username azureuser --ssh-key ~/.ssh/id_rsa
 
 # STORAGE ACCOUNT
 #
