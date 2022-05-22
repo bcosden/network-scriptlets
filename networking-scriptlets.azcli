@@ -83,11 +83,30 @@ az network bastion create -g $rg -n bastion --public-ip-address bastion-pip --vn
 # az cli does not have a property to enable SSH tunneling, so must be done via rest API
 subid=$(az account show --query 'id' -o tsv)
 uri='https://management.azure.com/subscriptions/'$subid'/resourceGroups/'$rg'/providers/Microsoft.Network/bastionHosts/bastion?api-version=2021-08-01'
-body='{"location":"eastus", "properties":{"enableTunneling":"true", "ipConfigurations": [
-    {"name": "bastion_ip_config", "properties":{"subnet":{"id":"/subscriptions/'$subid'/resourceGroups/'$rg'/providers/Microsoft.Network/virtualNetworks/hubVnet/subnets/AzureBastionSubnet"},"publicIPAddress":{"id":"/subscriptions/'$subid'/resourceGroups/'$rg'/providers/Microsoft.Network/publicIPAddresses/bastion-pip"}}}]}}'
+json='{
+  "location": "'$rg'",
+  "properties": {
+    "enableTunneling": "true",
+    "ipConfigurations": [
+      {
+        "name": "bastion_ip_config",
+        "properties": {
+          "subnet": {
+            "id": "/subscriptions/'$subid'/resourceGroups/'$rg'/providers/Microsoft.Network/virtualNetworks/hubVnet/subnets/AzureBastionSubnet"
+          },
+          "publicIPAddress": {
+            "id": "/subscriptions/'$subid'/resourceGroups/'$rg'/providers/Microsoft.Network/publicIPAddresses/bastion-pip"
+          }
+        }
+      }
+    ]
+  }
+}'
+
 az rest --method PUT \
-    --uri $uri  \
-    --body $body
+    --url $uri  \
+    --body "$json"  \
+    --output none
 
 # check Bastion provisioning state
 watch -n 5 'az network bastion show -g routeserver -n bastion --query 'provisioningState''
