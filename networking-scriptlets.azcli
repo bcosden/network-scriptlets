@@ -84,7 +84,7 @@ az network bastion create -g $rg -n bastion --public-ip-address bastion-pip --vn
 subid=$(az account show --query 'id' -o tsv)
 uri='https://management.azure.com/subscriptions/'$subid'/resourceGroups/'$rg'/providers/Microsoft.Network/bastionHosts/bastion?api-version=2021-08-01'
 json='{
-  "location": "'$rg'",
+  "location": "'$loc'",
   "properties": {
     "enableTunneling": "true",
     "ipConfigurations": [
