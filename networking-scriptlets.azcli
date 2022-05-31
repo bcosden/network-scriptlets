@@ -157,6 +157,9 @@ az network nsg create -g $rg -n MyNsg
 mypip=$(curl -4 ifconfig.io -s)
 az network nsg rule create -n SSH --nsg-name MyNsg --priority 300 -g $rg --direction Inbound --protocol TCP --source-address-prefixes $mypip --destination-port-ranges 22
 
+# update existing NIC
+az network nic update -g $rg -n MyNic --network-security-group MyNsg
+
 # Peer Virtual Networks
 VNet1Id=$(az network vnet show -g $rg -n $vNet1 --query id -o tsv)
 VNet2Id=$(az network vnet show -g $rg -n $vNet2 --query id -o tsv)
