@@ -3,6 +3,9 @@ loc="eastus"
 rg="vwan-lab"
 
 
+# ECHO COLORING
+echo -e '\033[1m['$(date +"%T")']\033[32m Creating Resource Group\033[36m' $rg '\033[32min\033[36m' $loc
+
 # RESOURCE GROUP
 #
 # list all resources in a resource group
