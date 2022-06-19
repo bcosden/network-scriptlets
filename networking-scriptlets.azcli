@@ -2,9 +2,18 @@
 loc="eastus"
 rg="vwan-lab"
 
+BLACK="\033[30m"
+RED="\033[31m"
+GREEN="\033[32m"
+YELLOW="\033[33m"
+BLUE="\033[34m"
+PINK="\033[35m"
+CYAN="\033[36m"
+WHITE="\033[37m"
+NORMAL="\033[0;39m"
 
 # ECHO COLORING
-echo -e '\033[1m['$(date +"%T")']\033[32m Creating Resource Group\033[36m' $rg '\033[32min\033[36m' $loc
+echo -e "$WHITE[$(date +"%T")]$GREEN Creating Resource Group$CYAN" $rg "$GREENin$CYAN" $loc
 
 # RESOURCE GROUP
 #
@@ -162,6 +171,10 @@ az network nsg rule create -n SSH --nsg-name MyNsg --priority 300 -g $rg --direc
 
 # update existing NIC
 az network nic update -g $rg -n MyNic --network-security-group MyNsg
+
+# update existing NIC with public ip address
+az network nic ip-config list --nic-name appVMNIC --resource-group $rg --out table
+az network nic ip-config update -n ipconfig1 --nic-name appVMNIC -g $rg --public-ip-address appvm-pip
 
 # Peer Virtual Networks
 VNet1Id=$(az network vnet show -g $rg -n $vNet1 --query id -o tsv)
