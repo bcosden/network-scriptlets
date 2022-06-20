@@ -70,6 +70,12 @@ az network nsg rule update -g $rg --nsg-name $vmname'NSG' -n 'default-allow-ssh'
 az vm image list --all -f UbuntuServer -p Canonical -l eastus -o table
 az vm list-sizes --location westeurope -o table
 
+# create route table to reach internet
+az network route-table create -g $rg -n nvaroute -o none
+az network route-table route create -g $rg --route-table-name nvaroute -n tointernet \
+    --next-hop-type Internet --address-prefix 0.0.0.0/0 -o none
+az network vnet subnet update -g $rg -n nva --vnet-name hubVnet --route-table nvaroute -o none
+
 # create a Cisco CSR
 #
 username="azureuser"
@@ -179,8 +185,8 @@ az network nic ip-config update -n ipconfig1 --nic-name appVMNIC -g $rg --public
 # Peer Virtual Networks
 VNet1Id=$(az network vnet show -g $rg -n $vNet1 --query id -o tsv)
 VNet2Id=$(az network vnet show -g $rg -n $vNet2 --query id -o tsv)
-az network vnet peering create -n "Link"$vNet1"To"$vNet2 -g $rg --vnet-name $vNet1 --remote-vnet $VNet2Id --allow-vnet-access
-az network vnet peering create -n "Link"$vNet2"To"$vNet1 -g $rg --vnet-name $vNet2 --remote-vnet $VNet1Id --allow-vnet-access
+az network vnet peering create -n "Link"$vNet1"To"$vNet2 -g $rg --vnet-name $vNet1 --remote-vnet $VNet2Id --allow-vnet-access --allow-forwarded-traffic
+az network vnet peering create -n "Link"$vNet2"To"$vNet1 -g $rg --vnet-name $vNet2 --remote-vnet $VNet1Id --allow-vnet-access --allow-forwarded-traffic
 
 
 # VIRTUAL NETWORK GATEWAY (VPN)
