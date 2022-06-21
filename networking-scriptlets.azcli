@@ -13,7 +13,7 @@ WHITE="\033[37m"
 NORMAL="\033[0;39m"
 
 # ECHO COLORING
-echo -e "$WHITE[$(date +"%T")]$GREEN Creating Resource Group$CYAN" $rg "$GREENin$CYAN" $loc
+echo -e "$WHITE$(date +"%T")$GREEN Creating Resource Group$CYAN" $rg "$GREENin$CYAN" $loc
 
 # RESOURCE GROUP
 #
