@@ -159,6 +159,9 @@ az network express-route port location list --query "[? contains(address, 'Ashbu
 # get the details for a particular location, the bandwidths available in that location
 az network express-route port location show --location "Equinix-Ashburn-DC2" --query "availableBandwidths" -o table
 
+peering=$(echo $(az network express-route show -g $rg -n exr-eastcircuit --query 'id' -o tsv)"/peerings/AzurePrivatePeering")
+rt=$(az network vhub route-table list -g vwan-nva --vhub-name hubeast --query '[0].id' -o tsv)
+az network express-route gateway connection create --gateway-name gwname -n conn-name --peering $peering -g $rg --associated-route-table $rt
 
 # VIRTUAL NETWORK
 #
@@ -172,7 +175,7 @@ az network vnet subnet create -g $rg --vnet-name spokeVnet -n MySubnet --address
 az network nsg create -g $rg -n MyNsg 
 
 # create NSG rule for port 22 with current source IP
-mypip=$(curl -4 ifconfig.io -s)
+mypip=$(curl -4 -s ifconfig.io)
 az network nsg rule create -n SSH --nsg-name MyNsg --priority 300 -g $rg --direction Inbound --protocol TCP --source-address-prefixes $mypip --destination-port-ranges 22
 
 # update existing NIC
